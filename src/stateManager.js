@@ -53,10 +53,8 @@ function getHistorySheet() {
 }
 
 /**
- * Reads the master list of teams from the History Sheet (and potentially others?).
- * Since the user mentioned "History of Added Teams", this sheet might serve as the master list source.
- * It contains all previously processed teams.
- * * @returns {Array<string>} List of unique team names in the master record.
+ * Reads the master list of teams from the Mail Settings Sheet.
+ * * @returns {Array<object>} List of objects { name: string, row: number }.
  */
 function getMasterTeamList() {
   const ss = SpreadsheetApp.openById(CONFIG.MAIL_SETTINGS_SPREADSHEET_ID);
@@ -66,15 +64,26 @@ function getMasterTeamList() {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return []; // Header only
 
-  // Assuming Team Name is in Column A (Index 0) - Check `COLUMN_DEF` usage in other files
-  // In `extractDataAsMap`, it finds index by header name.
   const headers = data[0];
   const teamNameIdx = headers.indexOf(COLUMN_DEF.TEAM_NAME); // 'チーム名'
 
   if (teamNameIdx === -1) return [];
 
-  const teams = data.slice(1).map(row => String(row[teamNameIdx]).trim()).filter(t => t !== '');
-  return [...new Set(teams)];
+  // Return list of objects with row number (index + 1)
+  // Note: Data range starts at Row 1. data[0] is Row 1. data[1] is Row 2.
+  const teamList = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][teamNameIdx]).trim();
+    if (name) {
+      teamList.push({
+        name: name,
+        row: i + 1 // +1 because array is 0-indexed, spreadsheet is 1-indexed
+      });
+    }
+  }
+
+  return teamList;
 }
 
 /**
