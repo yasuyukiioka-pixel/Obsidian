@@ -216,7 +216,13 @@ function testIncrementalDuplicateCheck() {
   Logger.log('---- Running: testIncrementalDuplicateCheck ----');
 
   // 1. Test checkTeamNameDuplicates
-  const masterTeams = ['Team A', 'Team B', 'Super Team C'];
+  // Update: Master Teams now include row numbers.
+  const masterTeams = [
+      { name: 'Team A', row: 100 },
+      { name: 'Team B', row: 101 },
+      { name: 'Super Team C', row: 102 }
+  ];
+
   const newRecords = [
     { teamName: 'Team A', rowNum: 10 },        // Exact match
     { teamName: 'Team B', rowNum: 20 },        // Exact match
@@ -233,15 +239,19 @@ function testIncrementalDuplicateCheck() {
   const results = checkTeamNameDuplicates(newRecords, masterTeams);
 
   // Expected Results:
-  // 1. Team A: Exact match. Row 10 and 60.
-  // 2. Team B: Exact match. Row 20.
-  // 3. Super Team C (JP): Partial match (contains 'Super Team C'). Row 40.
-  // 4. Team: Partial match (contained in 'Team A', 'Team B', 'Super Team C'). Row 50.
+  // 1. Team A: Exact match. Row 10 and 60. Master Row 100.
+  // 2. Team B: Exact match. Row 20. Master Row 101.
+  // 3. Super Team C (JP): Partial match (contains 'Super Team C'). Row 40. Master Row 102.
+  // 4. Team: Partial match (contained in 'Team A', 'Team B', 'Super Team C'). Row 50. Master Rows 100, 101, 102.
 
   // Verify 'Team A'
   const resA = results.find(r => r.teamName === 'Team A');
   if (!resA || resA.type !== '完全' || resA.rowNums.length !== 2 || !resA.rowNums.includes(10) || !resA.rowNums.includes(60)) {
     throw new Error(`Failed check for Team A. Got: ${JSON.stringify(resA)}`);
+  }
+  if (String(resA.masterRow) !== '100行目') {
+      // Logic update: Exact match now formats row as "X行目" too, and might use slash but here only 1 match.
+      throw new Error(`Failed master row check for Team A. Expected '100行目', got ${resA.masterRow}`);
   }
 
   // Verify 'Team B'
@@ -260,6 +270,26 @@ function testIncrementalDuplicateCheck() {
   const resC = results.find(r => r.teamName === 'Super Team C (JP)');
   if (!resC || resC.type !== '部分' || !resC.matchTarget.includes('Super Team C')) {
      throw new Error(`Failed check for Super Team C (JP). Got: ${JSON.stringify(resC)}`);
+  }
+  // Check new metadata fields
+  if (!String(resC.masterRow).includes('102')) {
+       throw new Error(`Failed master row check for Super Team C (JP). Expected 102, got ${resC.masterRow}`);
+  }
+
+  // 5. Test Multiple Matches (Slash Separation)
+  // 'Team' matches 'Team A' (100), 'Team B' (101), 'Super Team C' (102)
+  const resTeam = results.find(r => r.teamName === 'Team');
+  if (!resTeam) throw new Error('Failed to find result for "Team"');
+  
+  if (resTeam.type !== '部分') throw new Error('Expected "Team" to be Partial match');
+  
+  // Check separator
+  if (!resTeam.masterRow.includes(' / ')) {
+    throw new Error(`Expected slash separator in masterRow. Got: ${resTeam.masterRow}`);
+  }
+  // Check presence of all rows
+  if (!resTeam.masterRow.includes('100行目') || !resTeam.masterRow.includes('101行目') || !resTeam.masterRow.includes('102行目')) {
+    throw new Error(`Missing expected rows in multiple match. Got: ${resTeam.masterRow}`);
   }
 
   Logger.log('  -> Passed: checkTeamNameDuplicates logic');

@@ -775,6 +775,7 @@ function runIncrementalDuplicateCheck() {
     Logger.log('前回以降の重複チェックを開始します...');
 
     // 1. Get Master Team List
+    // Modified to return objects { name, row } instead of just strings
     const masterTeams = getMasterTeamList();
     Logger.log(`マスタ登録済みチーム数: ${masterTeams.length}`);
 
@@ -832,20 +833,109 @@ function outputDuplicateReport(duplicates) {
   sheet.clear();
   
   // Header
-  // Format: 種別, チーム名, 行番号, (備考/マッチ対象)
-  const header = [['種別', 'チーム名', '行番号', '重複対象(参考)']];
-  sheet.getRange(1, 1, 1, 4).setValues(header).setFontWeight('bold');
+  // Format: 種別, チーム名, 行番号, 重複対象(参考), マスタ合致行, 合致キーワード
+  const header = [['種別', 'チーム名', '行番号', '重複対象(参考)', 'マスタ合致行', '合致キーワード']];
+  sheet.getRange(1, 1, 1, 6).setValues(header).setFontWeight('bold');
   
   // Data
   const rows = duplicates.map(d => [
     d.type,
     d.teamName,
     d.rowNums.join(' : '), // User requested format "10:50:70"
-    d.matchTarget
+    d.matchTarget,
+    d.masterRow,
+    d.matchedKeyword
   ]);
   
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
-    sheet.autoResizeColumns(1, 4);
+    sheet.getRange(2, 1, rows.length, 6).setValues(rows);
+    sheet.autoResizeColumns(1, 6);
+  }
+}
+
+/**
+ * Checks for duplicates between new team names and the master team list.
+ * Supports both Exact Match and Partial Match.
+ * * @param {Array<object>} newRecords - Array of objects { teamName, rowNum, ... }
+ * @param {Array<object>} masterTeams - Array of objects { name: string, row: number } from the master list.
+ * @returns {Array<object>} Array of result objects { type: '完全'|'部分', teamName, rowNums: [], matchTarget: string, masterRow: string, matchedKeyword: string }
+ */
+function checkTeamNameDuplicates(newRecords, masterTeams) {
+  const results = [];
+  
+  // Normalize Helper
+  const norm = str => String(str).trim();
+
+  newRecords.forEach(record => {
+    const newTeam = norm(record.teamName);
+    const rowNum = record.rowNum;
+
+    let exactMatch = null;
+    let partialMatches = [];
+
+    // Iterate master teams
+    let exactMatches = [];
+    
+    for (const master of masterTeams) {
+      const masterName = norm(master.name);
+      
+      if (newTeam === masterName) {
+        exactMatches.push(master);
+      } else if (newTeam.includes(masterName) || masterName.includes(newTeam)) {
+        partialMatches.push(master);
+      }
+    }
+
+    if (exactMatches.length > 0) {
+      // Handle multiple exact matches (if any, though rare)
+      const targetNames = exactMatches.map(m => m.name).join(' / ');
+      const targetRows = exactMatches.map(m => `${m.row}行目`).join(' / ');
+      const keywords = exactMatches.map(m => m.name).join(' / ');
+      
+      addResult(results, '完全', newTeam, rowNum, targetNames, targetRows, keywords);
+      
+    } else if (partialMatches.length > 0) {
+      // Collect all partial matches
+      const targetNames = partialMatches.map(m => m.name).join(' / ');
+      const targetRows = partialMatches.map(m => `${m.row}行目`).join(' / ');
+      const keywords = partialMatches.map(m => m.name).join(' / '); // Keyword is the master team name that matched
+
+      addResult(results, '部分', newTeam, rowNum, targetNames, targetRows, keywords);
+    }
+  });
+
+  return results;
+}
+
+/**
+ * Helper to add or update results in the list.
+ * Groups by (Type + TeamName).
+ */
+function addResult(results, type, teamName, rowNum, matchTarget, masterRow, matchedKeyword) {
+  const existing = results.find(r => r.type === type && r.teamName === teamName);
+  
+  if (existing) {
+    if (!existing.rowNums.includes(rowNum)) {
+      existing.rowNums.push(rowNum);
+    }
+    // Update metadata if new matches found (simple concatenation for now to avoid losing info)
+    if (!existing.matchTarget.includes(matchTarget)) {
+       existing.matchTarget += ` / ${matchTarget}`;
+    }
+    if (!existing.masterRow.includes(masterRow)) {
+       existing.masterRow += ` / ${masterRow}`;
+    }
+    if (!existing.matchedKeyword.includes(matchedKeyword)) {
+       existing.matchedKeyword += ` / ${matchedKeyword}`;
+    }
+  } else {
+    results.push({
+      type: type,
+      teamName: teamName,
+      rowNums: [rowNum],
+      matchTarget: matchTarget,
+      masterRow: String(masterRow),
+      matchedKeyword: matchedKeyword
+    });
   }
 }
