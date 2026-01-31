@@ -874,24 +874,31 @@ function checkTeamNameDuplicates(newRecords, masterTeams) {
     let partialMatches = [];
 
     // Iterate master teams
+    let exactMatches = [];
+
     for (const master of masterTeams) {
       const masterName = norm(master.name);
 
       if (newTeam === masterName) {
-        exactMatch = master;
-        break; // Exact match found, stop looking? Or continue to find partials? Usually exact trumps partial.
+        exactMatches.push(master);
       } else if (newTeam.includes(masterName) || masterName.includes(newTeam)) {
         partialMatches.push(master);
       }
     }
 
-    if (exactMatch) {
-      addResult(results, '完全', newTeam, rowNum, exactMatch.name, exactMatch.row, exactMatch.name);
+    if (exactMatches.length > 0) {
+      // Handle multiple exact matches (if any, though rare)
+      const targetNames = exactMatches.map(m => m.name).join(' / ');
+      const targetRows = exactMatches.map(m => `${m.row}行目`).join(' / ');
+      const keywords = exactMatches.map(m => m.name).join(' / ');
+
+      addResult(results, '完全', newTeam, rowNum, targetNames, targetRows, keywords);
+
     } else if (partialMatches.length > 0) {
       // Collect all partial matches
-      const targetNames = partialMatches.map(m => m.name).join(', ');
-      const targetRows = partialMatches.map(m => `${m.row}行目`).join(', ');
-      const keywords = partialMatches.map(m => m.name).join(', '); // Keyword is the master team name that matched
+      const targetNames = partialMatches.map(m => m.name).join(' / ');
+      const targetRows = partialMatches.map(m => `${m.row}行目`).join(' / ');
+      const keywords = partialMatches.map(m => m.name).join(' / '); // Keyword is the master team name that matched
 
       addResult(results, '部分', newTeam, rowNum, targetNames, targetRows, keywords);
     }
@@ -913,13 +920,13 @@ function addResult(results, type, teamName, rowNum, matchTarget, masterRow, matc
     }
     // Update metadata if new matches found (simple concatenation for now to avoid losing info)
     if (!existing.matchTarget.includes(matchTarget)) {
-       existing.matchTarget += `, ${matchTarget}`;
+       existing.matchTarget += ` / ${matchTarget}`;
     }
     if (!existing.masterRow.includes(masterRow)) {
-       existing.masterRow += `, ${masterRow}`;
+       existing.masterRow += ` / ${masterRow}`;
     }
     if (!existing.matchedKeyword.includes(matchedKeyword)) {
-       existing.matchedKeyword += `, ${matchedKeyword}`;
+       existing.matchedKeyword += ` / ${matchedKeyword}`;
     }
   } else {
     results.push({
